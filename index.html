@@ -97,26 +97,29 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 
 <script>
 const AISLES = [
-  {key:'Alcohol',          label:'Alcohol',               emoji:'🍷'},
-  {key:'Produce',          label:'Fruit & Vegetables',    emoji:'🥦'},
-  {key:'Bakery & Bread',   label:'Bakery',                emoji:'🍞'},
-  {key:'Dairy & Eggs',     label:'Dairy & Eggs',          emoji:'🥛'},
-  {key:'Sauces & Condiments',label:'Sauces & Condiments', emoji:'🫙'},
-  {key:'Pantry',           label:'Pantry',                emoji:'🥫'},
-  {key:'Household',        label:'Household & Cleaning',  emoji:'🧹'},
-  {key:'Meat & Seafood',   label:'Chilled — Meat & Seafood',emoji:'❄️'},
-  {key:'Other',            label:'Chilled — Other',       emoji:'🧊'},
-  {key:'Frozen',           label:'Frozen Goods',          emoji:'🧊'},
+  {key:'Alcohol',             label:'Alcohol',                  emoji:'🍷'},
+  {key:'Produce',             label:'Fruit & Vegetables',       emoji:'🥦'},
+  {key:'Bakery & Bread',      label:'Bakery',                   emoji:'🍞'},
+  {key:'Dairy & Eggs',        label:'Dairy & Eggs',             emoji:'🥛'},
+  {key:'Sauces & Condiments', label:'Sauces & Condiments',      emoji:'🫙'},
+  {key:'Pantry',              label:'Pantry',                   emoji:'🥫'},
+  {key:'Spices',              label:'Spices & Herbs',           emoji:'🌶️'},
+  {key:'Household',           label:'Household & Cleaning',     emoji:'🧹'},
+  {key:'Meat & Seafood',      label:'Refrigerated — Meat & Seafood', emoji:'🥩'},
+  {key:'Refrigerated',        label:'Refrigerated — Other',     emoji:'❄️'},
+  {key:'Other',               label:'Refrigerated — General',   emoji:'🧊'},
+  {key:'Frozen',              label:'Frozen Goods',             emoji:'🧊'},
 ];
 
 const CAT_NORM = {
   'Meat & Seafood':'Meat & Seafood','Produce':'Produce','Dairy & Eggs':'Dairy & Eggs',
   'Pantry':'Pantry','Sauces & Condiments':'Sauces & Condiments','Bakery & Bread':'Bakery & Bread',
   'Frozen':'Frozen','Household':'Household','Other':'Other','Alcohol':'Alcohol',
+  'Spices':'Spices','Refrigerated':'Refrigerated',
   // Short codes from compact URL encoding
   'MS':'Meat & Seafood','PR':'Produce','DE':'Dairy & Eggs','PA':'Pantry',
   'SC':'Sauces & Condiments','BB':'Bakery & Bread','FR':'Frozen',
-  'HH':'Household','OT':'Other','AL':'Alcohol',
+  'HH':'Household','OT':'Other','AL':'Alcohol','SP':'Spices','RF':'Refrigerated',
 };
 
 let APP = { items:[], ticked:new Set(), mealNames:[], loaded:false };
