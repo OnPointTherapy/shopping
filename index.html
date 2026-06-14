@@ -45,11 +45,11 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 .step-num{background:var(--teal);color:white;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex-shrink:0;margin-top:1px;}
 
 /* Scroll area */
-.scroll-area{padding-top:108px;padding-bottom:calc(var(--safe-bot) + 86px);}
+.scroll-area{padding-top:150px;padding-bottom:calc(var(--safe-bot) + 86px);}
 
 /* Section */
 .section{margin-bottom:4px;}
-.section-header{display:flex;align-items:center;gap:10px;padding:14px 18px 8px;position:sticky;top:96px;z-index:10;background:rgba(245,243,238,0.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.section-header{display:flex;align-items:center;gap:10px;padding:14px 18px 8px;position:sticky;top:138px;z-index:10;background:rgba(245,243,238,0.96);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
 .section-emoji{font-size:17px;line-height:1;}
 .section-name{font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-mid);flex:1;}
 .section-count{font-size:12px;color:var(--ink-soft);background:rgba(0,0,0,0.06);padding:2px 8px;border-radius:20px;}
@@ -89,6 +89,24 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;font-size:14px;color:var(--ink-mid);}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{width:28px;height:28px;border:2px solid var(--border-mid);border-top-color:var(--teal);border-radius:50%;animation:spin 0.8s linear infinite;}
+
+/* Search */
+.search-wrap{position:relative;margin-top:10px;}
+.search-input{width:100%;padding:9px 36px 9px 14px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);background:var(--white);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;-webkit-appearance:none;appearance:none;}
+.search-input:focus{outline:none;border-color:var(--teal);}
+.search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:16px;color:var(--ink-soft);cursor:pointer;padding:4px;line-height:1;display:none;}
+.search-results{padding:0 12px 8px;}
+.search-result-item{display:flex;align-items:center;gap:14px;padding:15px 16px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;margin-bottom:4px;}
+.search-result-item:active{opacity:0.7;}
+.search-result-item.ticked{opacity:0.35;}
+.search-result-item.ticked .item-name{text-decoration:line-through;}
+.search-result-item .tick-circle{width:27px;height:27px;flex-shrink:0;border-radius:50%;border:1.5px solid var(--border-mid);display:flex;align-items:center;justify-content:center;transition:all 0.18s;background:var(--white);}
+.search-result-item.ticked .tick-circle{background:var(--teal);border-color:var(--teal);}
+.search-result-item .tick-check{opacity:0;transform:scale(0.4);transition:all 0.2s cubic-bezier(0.34,1.56,0.64,1);font-size:13px;color:white;font-weight:700;}
+.search-result-item.ticked .tick-check{opacity:1;transform:scale(1);}
+.search-aisle-label{font-size:10px;color:var(--ink-soft);background:var(--bg);padding:2px 7px;border-radius:20px;flex-shrink:0;margin-left:auto;}
+.search-empty{text-align:center;padding:2rem;color:var(--ink-soft);font-size:14px;}
+.search-count{font-size:12px;color:var(--ink-soft);padding:6px 12px 4px;}
 </style>
 </head>
 <body>
@@ -260,7 +278,9 @@ function triggerFileLoad() {
 function toggleItem(key) {
   APP.ticked.has(key) ? APP.ticked.delete(key) : APP.ticked.add(key);
   if (navigator.vibrate) navigator.vibrate(6);
-  renderList();
+  renderHeader();
+  if (APP_SEARCH) renderSearchResults();
+  else renderList();
 }
 
 function resetTicks() { APP.ticked.clear(); renderList(); }
@@ -291,26 +311,98 @@ function renderWelcome() {
     </div>`;
 }
 
+let APP_SEARCH = '';
+
+function handleSearch(val) {
+  APP_SEARCH = val.trim().toLowerCase();
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = APP_SEARCH ? 'block' : 'none';
+  renderSearchOrList();
+}
+
+function clearSearch() {
+  APP_SEARCH = '';
+  const inp = document.getElementById('search-input');
+  if (inp) inp.value = '';
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  renderSearchOrList();
+}
+
+function renderSearchOrList() {
+  if (APP_SEARCH) renderSearchResults();
+  else renderList();
+}
+
+function renderSearchResults() {
+  let area = document.querySelector('.scroll-area');
+  if (!area) return;
+
+  const matches = APP.items.filter(item =>
+    item.name.toLowerCase().includes(APP_SEARCH)
+  );
+
+  if (!matches.length) {
+    area.innerHTML = '<div class="search-empty">No items matching "' + APP_SEARCH + '"</div>';
+    return;
+  }
+
+  // Find which aisle each match belongs to
+  const aisleMap = {};
+  AISLES.forEach(a => aisleMap[a.key] = a);
+
+  let html = '<div class="search-count">' + matches.length + ' result' + (matches.length !== 1 ? 's' : '') + '</div>' +
+    '<div class="search-results">';
+
+  matches.forEach(item => {
+    const baseKey = baseIngredientName(item.name) || item.name.toLowerCase();
+    const checked = APP.ticked.has(baseKey);
+    const safeKey = baseKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const aisle = aisleMap[item.cat] || aisleMap['Other'];
+    html += '<div class="search-result-item' + (checked ? ' ticked' : '') + '" onclick="toggleItemAndRefreshSearch(\'' + safeKey + '\')">' +
+      '<div class="tick-circle"><span class="tick-check">✓</span></div>' +
+      '<span class="item-name" style="flex:1">' + item.name + '</span>' +
+      '<span class="search-aisle-label">' + (aisle ? aisle.emoji + ' ' + aisle.label : item.cat) + '</span>' +
+    '</div>';
+  });
+
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+function toggleItemAndRefreshSearch(baseKey) {
+  APP.ticked.has(baseKey) ? APP.ticked.delete(baseKey) : APP.ticked.add(baseKey);
+  if (navigator.vibrate) navigator.vibrate(6);
+  renderHeader(); // update progress bar
+  if (APP_SEARCH) renderSearchResults();
+  else renderList();
+}
+
 function renderHeader() {
   const total = APP.items.length;
   const done = [...APP.ticked].length;
   const pct = total > 0 ? Math.round((done/total)*100) : 0;
-  const names = APP.mealNames.slice(0,2).join(', ') + (APP.mealNames.length > 2 ? ` +${APP.mealNames.length-2} more` : '');
+  const names = APP.mealNames.slice(0,2).join(', ') + (APP.mealNames.length > 2 ? ' +' + (APP.mealNames.length-2) + ' more' : '');
 
   const existing = document.querySelector('.header');
-  const html = `<header class="header">
-    <div class="header-top">
-      <div>
-        <div class="header-title">On Point <span>Shop</span></div>
-        ${names ? `<div class="meal-names">${names}</div>` : ''}
-      </div>
-      <div style="font-size:13px;color:var(--ink-mid);font-weight:500">${pct}%</div>
-    </div>
-    <div class="progress-row">
-      <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
-      <div class="progress-label">${done} / ${total}</div>
-    </div>
-  </header>`;
+  const html = '<header class="header">' +
+    '<div class="header-top">' +
+      '<div>' +
+        '<div class="header-title">On Point <span>Shop</span></div>' +
+        (names ? '<div class="meal-names">' + names + '</div>' : '') +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--ink-mid);font-weight:500">' + pct + '%</div>' +
+    '</div>' +
+    '<div class="progress-row">' +
+      '<div class="progress-bar-wrap"><div class="progress-bar" style="width:' + pct + '%"></div></div>' +
+      '<div class="progress-label">' + done + ' / ' + total + '</div>' +
+    '</div>' +
+    '<div class="search-wrap">' +
+      '<input class="search-input" id="search-input" type="search" placeholder="🔍  search items…" ' +
+        'oninput="handleSearch(this.value)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">' +
+      '<button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>' +
+    '</div>' +
+  '</header>';
 
   if (existing) existing.outerHTML = html;
   else document.getElementById('root').insertAdjacentHTML('afterbegin', html);
@@ -368,7 +460,16 @@ function renderList() {
         '<span class="section-name">' + aisle.label + '</span>' +
         '<span class="section-count">' + tickedCount + '/' + aisleItems.length + '</span>' +
       '</div><div class="items-list">';
-    aisleItems.forEach(item => {
+    // Sort: unchecked first (alphabetical), then checked (alphabetical) at bottom
+    const sorted = [...aisleItems].sort((a, b) => {
+      const aKey = baseIngredientName(a.name) || a.name.toLowerCase();
+      const bKey = baseIngredientName(b.name) || b.name.toLowerCase();
+      const aTicked = APP.ticked.has(aKey);
+      const bTicked = APP.ticked.has(bKey);
+      if (aTicked !== bTicked) return aTicked ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+    sorted.forEach(item => {
       const baseKey = baseIngredientName(item.name) || item.name.toLowerCase();
       const checked = APP.ticked.has(baseKey);
       const safeKey = baseKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
