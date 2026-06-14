@@ -125,6 +125,23 @@ const CAT_NORM = {
 let APP = { items:[], ticked:new Set(), mealNames:[], loaded:false };
 
 // ── URL data handling ──────────────────────────────
+function baseIngredientName(name) {
+  const DESCRIPTORS = 'a|an|the|some|few|large|small|medium|fresh|dried|frozen|tinned|canned|cooked|raw|whole|baby|mini|extra|ripe|green|red|yellow|white|black|brown|dark|light|sweet|plain|pure|organic|chopped|diced|sliced|grated|minced|crushed|peeled|halved|quartered|roughly|finely';
+  const UNITS = 'g|kg|ml|l|x|pack|packs|can|cans|bunch|bunches|head|heads|clove|cloves|cup|cups|tbsp|tsp|slice|slices|piece|pieces|sprig|sprigs|stalk|stalks|rasher|rashers|fillet|fillets|bottle|bottles|jar|jars|bag|bags|tin|tins|loaf|loaves|block|blocks|punnet|punnets|dozen|litre|litres|lb|oz|knob|splash|pinch|handful|bulb|bulbs|stick|sticks';
+  const TRAILING = 'cloves|clove|bulb|bulbs|bunch|bunches|head|heads|stalk|stalks|stick|sticks|leaves|leaf|sprig|sprigs|rasher|rashers|fillet|fillets|piece|pieces|slice|slices|cube|cubes|strip|strips|floret|florets';
+  let s = name.toLowerCase();
+  s = s.replace(/\(.*?\)/g, '');
+  s = s.replace(new RegExp('\\d+\\s*(' + UNITS + ')\\b', 'gi'), '');
+  s = s.replace(/^\d+\s*/, '');
+  s = s.replace(new RegExp('\\b(' + DESCRIPTORS + ')\\b\\s*', 'gi'), '');
+  s = s.replace(/[^a-z0-9\s&]/g, '').replace(/\s+/g, ' ').trim();
+  s = s.replace(new RegExp('\\s+(' + TRAILING + ')$', 'i'), '').trim();
+  const irregulars = [['tomatoes','tomato'],['potatoes','potato'],['avocados','avocado'],['mangoes','mango'],['leaves','leaf'],['halves','half']];
+  irregulars.forEach(([pl,sg]) => { s = s.replace(new RegExp('\\b' + pl + '\\b', 'g'), sg); });
+  s = s.replace(/\b([a-z]{3,})s\b/g, '$1');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 function tryLoadFromURL() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -148,42 +165,63 @@ function tryLoadFromURL() {
 function initFromCompact(data) {
   const norm = c => CAT_NORM[c] || 'Other';
   const srcMap = {'r':'recipe','st':'staple','o':'one-off'};
-  APP.items = (data.i || data.items || []).map(i => ({
+  const rawItems = (data.i || data.items || []).map(i => ({
     name: i.n, cat: norm(i.c || 'OT'), source: srcMap[i.s] || i.s || 'recipe'
   }));
+  APP.items = mergeItems(rawItems);
   APP.ticked = new Set();
   APP.mealNames = data.m || data.mealNames || [];
   APP.loaded = true;
   render();
 }
 
+// Merge items by base ingredient key
+function mergeItems(items) {
+  const merged = new Map();
+  items.forEach(item => {
+    const base = baseIngredientName(item.name);
+    if (!base) return;
+    if (merged.has(base)) {
+      const existing = merged.get(base);
+      existing.count = (existing.count || 1) + 1;
+      const newQty = item.name.match(/\(\s*([\d.]+)\s*([^)\d]*)\)/);
+      const exQty  = existing.rawName.match(/\(\s*([\d.]+)\s*([^)\d]*)\)/);
+      if (newQty && exQty) {
+        const q1 = parseFloat(exQty[1]), q2 = parseFloat(newQty[1]);
+        const unit = (exQty[2] || newQty[2] || '').trim();
+        if (!isNaN(q1) && !isNaN(q2)) {
+          const basePart = existing.rawName.replace(/\s*\(.*?\)\s*$/, '').trim();
+          existing.name = basePart + ' (' + (q1 + q2) + (unit ? ' ' + unit : '') + ')';
+        }
+      } else if (!newQty && !exQty && existing.count > 1) {
+        existing.name = existing.rawName + ' (x' + existing.count + ')';
+      }
+      if (existing.cat === 'Other' && item.cat !== 'Other') existing.cat = item.cat;
+    } else {
+      merged.set(base, { name: item.name, rawName: item.name, cat: item.cat, source: item.source, count: 1 });
+    }
+  });
+  return [...merged.values()];
+}
+
 // Full format from .json file import
 function initFromFull(data) {
-  const seen = new Set();
-  const result = [];
   const norm = c => CAT_NORM[c] || 'Other';
+  const raw = [];
 
   (data.selectedMeals || []).forEach(id => {
     const r = (data.recipes || []).find(x => x.id === id);
     if (!r) return;
-    r.ingredients.forEach(ingr => {
-      const k = ingr.name.toLowerCase();
-      if (!seen.has(k)) { seen.add(k); result.push({name:ingr.name, cat:norm(ingr.cat||'Other'), source:'recipe'}); }
-    });
+    r.ingredients.forEach(ingr => raw.push({name:ingr.name, cat:norm(ingr.cat||'Other'), source:'recipe'}));
   });
   (data.addedStaples || []).forEach(id => {
     const s = (data.staples || []).find(x => x.id === id);
-    if (!s) return;
-    const k = s.name.toLowerCase();
-    if (!seen.has(k)) { seen.add(k); result.push({name:s.name, cat:norm(s.cat||'Other'), source:'staple'}); }
+    if (s) raw.push({name:s.name, cat:norm(s.cat||'Other'), source:'staple'});
   });
-  (data.oneOffItems || []).forEach(i => {
-    const k = i.name.toLowerCase();
-    if (!seen.has(k)) { seen.add(k); result.push({name:i.name, cat:norm(i.cat||'Other'), source:'one-off'}); }
-  });
+  (data.oneOffItems || []).forEach(i => raw.push({name:i.name, cat:norm(i.cat||'Other'), source:'one-off'}));
 
-  APP.items = result;
-  APP.ticked = new Set(data.tickedItems || []);
+  APP.items = mergeItems(raw);
+  APP.ticked = new Set();
   APP.mealNames = (data.selectedMeals || [])
     .map(id => (data.recipes || []).find(r => r.id === id)?.name)
     .filter(Boolean);
@@ -322,23 +360,23 @@ function renderList() {
   AISLES.forEach(aisle => {
     const aisleItems = grouped[aisle.key];
     if (!aisleItems || !aisleItems.length) return;
-    const tickedCount = aisleItems.filter(i => APP.ticked.has(i.name.toLowerCase())).length;
+    const tickedCount = aisleItems.filter(i => APP.ticked.has(baseIngredientName(i.name)||i.name.toLowerCase())).length;
     const allDone = tickedCount === aisleItems.length;
-    html += `<div class="section ${allDone?'section-done':''}">
-      <div class="section-header">
-        <span class="section-emoji">${aisle.emoji}</span>
-        <span class="section-name">${aisle.label}</span>
-        <span class="section-count">${tickedCount}/${aisleItems.length}</span>
-      </div>
-      <div class="items-list">`;
+    html += '<div class="section ' + (allDone?'section-done':'') + '">' +
+      '<div class="section-header">' +
+        '<span class="section-emoji">' + aisle.emoji + '</span>' +
+        '<span class="section-name">' + aisle.label + '</span>' +
+        '<span class="section-count">' + tickedCount + '/' + aisleItems.length + '</span>' +
+      '</div><div class="items-list">';
     aisleItems.forEach(item => {
-      const k = item.name.toLowerCase();
-      const checked = APP.ticked.has(k);
-      const badge = item.source !== 'recipe' ? `<span class="item-badge">${item.source}</span>` : '';
-      html += `<div class="item${checked?' ticked':''}" onclick="toggleItem('${k.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
-        <div class="tick-circle"><span class="tick-check">✓</span></div>
-        <span class="item-name">${item.name}</span>${badge}
-      </div>`;
+      const baseKey = baseIngredientName(item.name) || item.name.toLowerCase();
+      const checked = APP.ticked.has(baseKey);
+      const safeKey = baseKey.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const badge = item.source !== 'recipe' ? '<span class="item-badge">' + item.source + '</span>' : '';
+      html += '<div class="item' + (checked?' ticked':'') + '" onclick="toggleItem(\'' + safeKey + '\')">' +
+        '<div class="tick-circle"><span class="tick-check">✓</span></div>' +
+        '<span class="item-name">' + item.name + '</span>' + badge +
+      '</div>';
     });
     html += '</div></div>';
   });
