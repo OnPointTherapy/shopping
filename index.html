@@ -95,6 +95,9 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 .search-input{width:100%;padding:9px 36px 9px 14px;border:1px solid var(--border-mid);border-radius:var(--radius-sm);background:var(--white);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;-webkit-appearance:none;appearance:none;}
 .search-input:focus{outline:none;border-color:var(--teal);}
 .search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:16px;color:var(--ink-soft);cursor:pointer;padding:4px;line-height:1;display:none;}
+.search-back-bar{display:none;margin-top:8px;}
+.search-back-btn{width:100%;padding:10px;border-radius:var(--radius-sm);border:1.5px solid var(--teal);background:var(--teal-light);color:var(--teal-dark);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;gap:6px;}
+.search-back-btn:active{opacity:0.7;}
 .search-results{padding:0 12px 8px;}
 .search-result-item{display:flex;align-items:center;gap:14px;padding:15px 16px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;margin-bottom:4px;}
 .search-result-item:active{opacity:0.7;}
@@ -107,6 +110,12 @@ html,body{height:100%;background:var(--bg);font-family:'DM Sans',system-ui,sans-
 .search-aisle-label{font-size:10px;color:var(--ink-soft);background:var(--bg);padding:2px 7px;border-radius:20px;flex-shrink:0;margin-left:auto;}
 .search-empty{text-align:center;padding:2rem;color:var(--ink-soft);font-size:14px;}
 .search-count{font-size:12px;color:var(--ink-soft);padding:6px 12px 4px;}
+/* Collapsible sections */
+.section-header{cursor:pointer;}
+.section-toggle{font-size:11px;color:var(--ink-soft);margin-left:4px;transition:transform 0.2s;}
+.section.collapsed .section-toggle{transform:rotate(-90deg);}
+.section.collapsed .items-list{display:none;}
+.section-done-pill{font-size:10px;font-weight:500;background:var(--teal-light);color:var(--teal-dark);padding:2px 8px;border-radius:20px;margin-left:4px;}
 </style>
 </head>
 <body>
@@ -312,6 +321,7 @@ function renderWelcome() {
 }
 
 let APP_SEARCH = '';
+let collapsedSections = new Set(); // tracks manually collapsed section keys
 
 function handleSearch(val) {
   APP_SEARCH = val.trim().toLowerCase();
@@ -373,9 +383,24 @@ function renderSearchResults() {
 function toggleItemAndRefreshSearch(baseKey) {
   APP.ticked.has(baseKey) ? APP.ticked.delete(baseKey) : APP.ticked.add(baseKey);
   if (navigator.vibrate) navigator.vibrate(6);
-  renderHeader(); // update progress bar
+  renderHeader();
   if (APP_SEARCH) renderSearchResults();
   else renderList();
+}
+
+function toggleSection(key) {
+  if (collapsedSections.has(key)) collapsedSections.delete(key);
+  else collapsedSections.add(key);
+  // Toggle in DOM without full re-render for smoothness
+  const id = 'section-' + key.replace(/[^a-z0-9]/gi,'-');
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.toggle('collapsed');
+    // If a done section was manually expanded, remove auto-collapse
+    if (!el.classList.contains('collapsed') && el.classList.contains('section-done')) {
+      // keep it open — user explicitly expanded it
+    }
+  }
 }
 
 function renderHeader() {
@@ -399,8 +424,12 @@ function renderHeader() {
     '</div>' +
     '<div class="search-wrap">' +
       '<input class="search-input" id="search-input" type="search" placeholder="🔍  search items…" ' +
-        'oninput="handleSearch(this.value)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">' +
-      '<button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>' +
+        'oninput="handleSearch(this.value)" autocomplete="off" autocorrect="off" autocapitalize="off" ' +
+        'spellcheck="false" value="' + (APP_SEARCH || '') + '">' +
+      '<button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:' + (APP_SEARCH ? 'block' : 'none') + '">✕</button>' +
+    '</div>' +
+    '<div class="search-back-bar" id="search-back-bar" style="display:' + (APP_SEARCH ? 'block' : 'none') + '">' +
+      '<button class="search-back-btn" onclick="clearSearch()">← back to full list</button>' +
     '</div>' +
   '</header>';
 
@@ -454,12 +483,17 @@ function renderList() {
     if (!aisleItems || !aisleItems.length) return;
     const tickedCount = aisleItems.filter(i => APP.ticked.has(baseIngredientName(i.name)||i.name.toLowerCase())).length;
     const allDone = tickedCount === aisleItems.length;
-    html += '<div class="section ' + (allDone?'section-done':'') + '">' +
-      '<div class="section-header">' +
+    // Auto-collapse completed sections; respect manual toggle
+    const isCollapsed = allDone || collapsedSections.has(aisle.key);
+    const sectionClass = 'section' + (allDone ? ' section-done' : '') + (isCollapsed ? ' collapsed' : '');
+    html += '<div class="' + sectionClass + '" id="section-' + aisle.key.replace(/[^a-z0-9]/gi,'-') + '">' +
+      '<div class="section-header" onclick="toggleSection(\'' + aisle.key + '\')">' +
         '<span class="section-emoji">' + aisle.emoji + '</span>' +
         '<span class="section-name">' + aisle.label + '</span>' +
-        '<span class="section-count">' + tickedCount + '/' + aisleItems.length + '</span>' +
-      '</div><div class="items-list">';
+        (allDone ? '<span class="section-done-pill">✓ done</span>' : '<span class="section-count">' + tickedCount + '/' + aisleItems.length + '</span>') +
+        '<span class="section-toggle">▾</span>' +
+      '</div>' +
+      '<div class="items-list">';
     // Sort: unchecked first (alphabetical), then checked (alphabetical) at bottom
     const sorted = [...aisleItems].sort((a, b) => {
       const aKey = baseIngredientName(a.name) || a.name.toLowerCase();
